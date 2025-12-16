@@ -75,8 +75,15 @@ with st.sidebar:
     # Controls
     if st.session_state.df is not None:
         st.markdown("**💾 Export Options**")
+        # EXPORT BUTTON (Updated to always grab the LATEST df)
         csv = st.session_state.df.to_csv(index=False).encode('utf-8')
-        st.download_button("Download CSV", csv, "pilot_data.csv", "text/csv", use_container_width=True)
+        st.download_button(
+            label="Download Current CSV", 
+            data=csv, 
+            file_name="pilot_cleaned_data.csv", 
+            mime="text/csv", 
+            use_container_width=True
+        )
         
         col_undo, col_clear = st.columns(2)
         with col_undo:
@@ -84,14 +91,15 @@ with st.sidebar:
                 if st.session_state.history:
                     st.session_state.df = st.session_state.history.pop()
                     st.session_state.chat_history.append({"role": "system", "content": "↺ Undid last action"})
-                    st.rerun()
+                    st.rerun() # Force refresh to update Export button
         with col_clear:
             if st.button("🗑️ Clear Chat", use_container_width=True):
                 st.session_state.chat_history = []
                 st.rerun()
             
     st.markdown("---")
-    st.markdown("Want the Source Code? [**Get it here**](YOUR_GUMROAD_LINK)")
+    # LINK FIX: Replace '#' with your actual Gumroad URL
+    st.markdown("Want the Source Code? [**Get it here**](https://raviodedara.gumroad.com/l/rvod)") 
 
 # --- 5. AI LOGIC (Auto-Detect) ---
 def get_gemini_response(prompt):
@@ -154,7 +162,7 @@ else:
     with tab2:
         st.markdown("### 📓 AI Notebook")
         
-        # 1. ANALYST TOOLKIT (RESTORED)
+        # 1. ANALYST TOOLKIT
         with st.expander("🛠️ Analyst Toolkit (Quick Actions)", expanded=False):
             c1, c2, c3, c4 = st.columns(4)
             if c1.button("👁️ Show Head"):
@@ -168,7 +176,7 @@ else:
                 st.session_state.chat_history.append({"role": "user", "content": "Show missing"})
                 st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.isnull().sum())", "type": "code"})
             if c4.button("🧹 Auto-Clean"):
-                st.session_state.quick_prompt = "Identify missing values. Fill numeric missing values with 0. Remove duplicates. Show the clean head."
+                st.session_state.quick_prompt = "Identify missing values. Fill numeric missing values with 0. Remove duplicates. Assign the result back to 'df'. Show the clean head."
 
         # 2. CHAT HISTORY
         for msg in st.session_state.chat_history:
@@ -188,7 +196,6 @@ else:
         # 3. CHAT INPUT
         user_input = st.chat_input("Ask (e.g., 'Plot Price vs Reviews')...")
         
-        # Check for Quick Prompt trigger
         if 'quick_prompt' in st.session_state:
             user_input = st.session_state.pop('quick_prompt')
 
@@ -201,6 +208,7 @@ else:
                     try:
                         buffer = io.StringIO(); df.info(buf=buffer); info_str = buffer.getvalue()
                         
+                        # --- PROMPT LOGIC ---
                         prompt = f"""
                         You are an expert Python Data Scientist.
                         Your goal is to write executable Python code to answer the user's question.
@@ -215,8 +223,9 @@ else:
                         1. Use 'plotly.express' as 'px' for visualizations.
                         2. CRITICAL: You MUST display charts using `st.plotly_chart(fig)`.
                         3. CRITICAL: For text/numbers, use `st.write()`.
-                        4. MAPS: Use `px.scatter_mapbox`. Set `mapbox_style="open-street-map"` and `zoom=10`.
-                        5. Return ONLY Python code. No markdown formatting.
+                        4. DATA UPDATES: If the user asks to clean/modify data (e.g. drop rows, fillna), YOU MUST ASSIGN THE RESULT BACK TO 'df'. Example: `df = df.dropna()`
+                        5. MAPS: Use `px.scatter_mapbox`. Set `mapbox_style="open-street-map"` and `zoom=10`.
+                        6. Return ONLY Python code. No markdown formatting.
                         """
                         
                         response = get_gemini_response(prompt)
@@ -224,6 +233,7 @@ else:
                         if hasattr(response, 'text'):
                             code = response.text.replace("```python", "").replace("```", "").strip()
                             
+                            # SAVE OLD STATE FOR UNDO
                             save_data_history()
                             
                             with st.status("Executed Code", state="complete"):
@@ -232,8 +242,13 @@ else:
                             local_scope = {"df": df, "pd": pd, "st": st, "px": px, "plt": plt, "sns": sns}
                             exec(code, globals(), local_scope)
                             
+                            # UPDATE STATE
                             st.session_state.df = local_scope['df']
                             st.session_state.chat_history.append({"role": "assistant", "code": code, "type": "code"})
+                            
+                            # FORCE REFRESH (Fixes Export Button)
+                            st.rerun()
+                            
                         else:
                             st.error(f"AI Error: {response}")
                             
