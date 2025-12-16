@@ -208,7 +208,7 @@ else:
                     try:
                         buffer = io.StringIO(); df.info(buf=buffer); info_str = buffer.getvalue()
                         
-                        # --- PROMPT LOGIC ---
+                        # --- THE "PRO ANALYST" PROMPT ---
                         prompt = f"""
                         You are an expert Python Data Scientist.
                         Your goal is to write executable Python code to answer the user's question.
@@ -219,13 +219,18 @@ else:
                         
                         USER QUESTION: {user_input}
                         
-                        STRICT RULES:
-                        1. Use 'plotly.express' as 'px' for visualizations.
-                        2. CRITICAL: You MUST display charts using `st.plotly_chart(fig)`.
-                        3. CRITICAL: For text/numbers, use `st.write()`.
-                        4. DATA UPDATES: If the user asks to clean/modify data (e.g. drop rows, fillna), YOU MUST ASSIGN THE RESULT BACK TO 'df'. Example: `df = df.dropna()`
-                        5. MAPS: Use `px.scatter_mapbox`. Set `mapbox_style="open-street-map"` and `zoom=10`.
-                        6. Return ONLY Python code. No markdown formatting.
+                        STRICT LOGIC RULES:
+                        1. **ACTION vs VIEW:**
+                           - If the user uses verbs like "REMOVE", "DROP", "FILTER", "CLEAN", "DELETE", or "FILL": You MUST modify the 'df' variable directly. (e.g., `df = df.drop(...)`, `df = df[df['col'] > 0]`).
+                           - If the user uses verbs like "SHOW", "PLOT", "DESCRIBE", "PRINT": Do NOT modify 'df'. Just display the result (e.g., `st.write(df.head())`).
+                        
+                        2. **VISUALIZATION:** Use 'plotly.express' as 'px'. You MUST use `st.plotly_chart(fig)`.
+                        
+                        3. **OUTPUT:** Use `st.write()` for text/tables.
+                        
+                        4. **MAPS:** Use `px.scatter_mapbox` with `mapbox_style="open-street-map"` and `zoom=10`.
+                        
+                        5. **FINAL FORMAT:** Return ONLY the raw Python code.
                         """
                         
                         response = get_gemini_response(prompt)
@@ -254,3 +259,4 @@ else:
                             
                     except Exception as e:
                         st.error(f"Error: {e}")
+
