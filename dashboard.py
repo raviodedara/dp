@@ -84,14 +84,23 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("Want the Source Code? [**Get it here**](YOUR_GUMROAD_LINK)")
 
-# --- 5. AI LOGIC (The Fix) ---
+# --- 5. AI LOGIC (THE FIX: Fallback Strategy) ---
 def get_gemini_response(prompt):
+    """
+    Attempts to use the best model. 
+    If Flash fails (404), it falls back to Pro.
+    """
     try:
-        # We use the specific 1.5 Flash model which is fast and free-tier friendly
+        # Priority 1: Flash (Fast)
         model = genai.GenerativeModel('gemini-1.5-flash')
         return model.generate_content(prompt)
-    except Exception as e:
-        return f"Error: {e}"
+    except Exception:
+        try:
+            # Priority 2: Pro (Stable)
+            model = genai.GenerativeModel('gemini-pro')
+            return model.generate_content(prompt)
+        except Exception as final_error:
+            return f"Error: {final_error}"
 
 def save_data_history():
     if st.session_state.df is not None:
@@ -141,6 +150,7 @@ else:
                         with st.status("Executed Code", state="complete"):
                             st.code(msg["code"], language="python")
                         try:
+                            # Re-execute code to render charts
                             local_scope = {"df": df, "pd": pd, "st": st, "px": px}
                             exec(msg["code"], globals(), local_scope)
                         except: pass
@@ -173,8 +183,10 @@ else:
                         response = get_gemini_response(prompt)
                         
                         if hasattr(response, 'text'):
+                            # Clean code string
                             code = response.text.replace("```python", "").replace("```", "").strip()
                             
+                            # Execute
                             with st.status("Executed Code", state="complete"):
                                 st.code(code, language='python')
                             
