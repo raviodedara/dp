@@ -206,19 +206,27 @@ else:
                     try:
                         buffer = io.StringIO(); df.info(buf=buffer); info_str = buffer.getvalue()
                         
+                        # --- THE NEW "SMART" PROMPT ---
                         prompt = f"""
-                        You are a Python Data Analyst using Streamlit.
-                        User Request: {user_input}
-                        Data Info: {info_str}
-                        Columns: {list(df.columns)}
+                        You are an expert Python Data Scientist.
+                        Your goal is to write executable Python code to answer the user's question using the dataframe 'df'.
+
+                        METADATA:
+                        - Columns: {list(df.columns)}
+                        - Data Info: {info_str}
+
+                        USER QUESTION: {user_input}
+
+                        STRICT CODING RULES:
+                        1. **Visualization:** Use 'plotly.express' as 'px'.
+                           - CRITICAL: You MUST display the plot using `st.plotly_chart(fig)` immediately after creating it. If you don't run this command, the chart will be invisible.
+                           - **Maps:** If the user asks for a map, use `px.scatter_mapbox`. You MUST set `zoom=10` and `mapbox_style="open-street-map"` (otherwise the map will be blank).
                         
-                        CRITICAL RULES:
-                        1. The dataframe is named 'df'.
-                        2. If the user asks for a chart, create it using 'plotly.express' as 'px'.
-                        3. AFTER creating the chart, YOU MUST DISPLAY IT using: st.plotly_chart(fig)
-                        4. If calculating a number/table, DISPLAY IT using: st.write()
-                        5. Output ONLY the executable Python code. No text explanations.
+                        2. **Text/Tables:** Use `st.write()` or `st.dataframe()` to display any text or calculation results.
+                        
+                        3. **Format:** Return ONLY the raw Python code. Do not use Markdown blocks (```python). Do not write explanations, just code.
                         """
+                        # --------------------------------
                         
                         response = get_gemini_response(prompt)
                         
@@ -240,4 +248,3 @@ else:
                             
                     except Exception as e:
                         st.error(f"Error: {e}")
-
