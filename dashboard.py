@@ -2,8 +2,6 @@ import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 import io
-import matplotlib.pyplot as plt
-import seaborn as sns
 import plotly.express as px
 
 # --- 1. CONFIGURATION ---
@@ -19,18 +17,11 @@ if 'chat_history' not in st.session_state:
 if 'user_api_key' not in st.session_state:
     st.session_state.user_api_key = ""
 
-# --- 3. CUSTOM CSS (Notebook Style) ---
+# --- 3. CUSTOM CSS ---
 st.markdown("""
     <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    .title-text {
-        font-size: 50px;
-        font-weight: 900;
-        background: -webkit-linear-gradient(45deg, #1E88E5, #FF4B4B);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
     .stChatMessage {
         background-color: #f9f9f9;
         border-radius: 10px;
@@ -41,13 +32,12 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. SIDEBAR (API Key & Controls) ---
+# --- 4. SIDEBAR ---
 with st.sidebar:
-    # Logo & Title
     st.image("https://cdn-icons-png.flaticon.com/512/2103/2103633.png", width=50)
     st.title("Data Pilot")
     
-    # API Key Input (The Fix)
+    # API Key Input
     api_input = st.text_input(
         "Enter Gemini API Key", 
         type="password", 
@@ -72,12 +62,13 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Export & Controls
+    # Export
     if st.session_state.df is not None:
         st.markdown("**💾 Export Options**")
         csv = st.session_state.df.to_csv(index=False).encode('utf-8')
         st.download_button("Download CSV", csv, "pilot_data.csv", "text/csv", use_container_width=True)
     
+    # Controls
     col_undo, col_clear = st.columns(2)
     with col_undo:
         if st.button("↺ Undo", use_container_width=True):
@@ -93,28 +84,14 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("Want the Source Code? [**Get it here**](YOUR_GUMROAD_LINK)")
 
-# --- 5. API CONFIGURATION (The Logic Fix) ---
-ai_available = False
-if st.session_state.user_api_key:
-    try:
-        genai.configure(api_key=st.session_state.user_api_key)
-        ai_available = True
-    except Exception as e:
-        st.error(f"API Key Error: {e}")
-
+# --- 5. AI LOGIC (The Fix) ---
 def get_gemini_response(prompt):
-    """Directly calls the best available model."""
     try:
-        # Try Flash first (Fast & Cheap)
+        # We use the specific 1.5 Flash model which is fast and free-tier friendly
         model = genai.GenerativeModel('gemini-1.5-flash')
         return model.generate_content(prompt)
-    except Exception:
-        try:
-            # Fallback to Pro (Standard)
-            model = genai.GenerativeModel('gemini-pro')
-            return model.generate_content(prompt)
-        except Exception as e:
-            return f"Error: {e}"
+    except Exception as e:
+        return f"Error: {e}"
 
 def save_data_history():
     if st.session_state.df is not None:
@@ -122,65 +99,37 @@ def save_data_history():
         if len(st.session_state.history) > 5:
             st.session_state.history.pop(0)
 
-# --- 6. MAIN APP INTERFACE ---
-st.markdown('<p class="title-text">Data Pilot</p>', unsafe_allow_html=True)
-
+# --- 6. MAIN APP ---
 if not st.session_state.user_api_key:
     st.warning("👈 Please enter your Google Gemini API Key in the sidebar to start.")
+elif st.session_state.df is None:
+    st.info("👈 Upload a CSV file in the sidebar to begin.")
+else:
+    # Initialize API
+    try:
+        genai.configure(api_key=st.session_state.user_api_key)
+    except Exception as e:
+        st.error(f"API Key Error: {e}")
 
-if st.session_state.df is not None:
     df = st.session_state.df
     
     # TABS
     tab1, tab2 = st.tabs(["📊 Dashboard", "👨🏼‍✈️ Analyst Notebook"])
 
-    # --- TAB 1: DASHBOARD ---
+    # --- DASHBOARD TAB ---
     with tab1:
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Rows", df.shape[0])
         c2.metric("Columns", df.shape[1])
         c3.metric("Missing", df.isnull().sum().sum())
         c4.metric("Duplicates", df.duplicated().sum())
-        
-        st.markdown("---")
-        
-        col_num, col_cat = st.columns(2)
-        with col_num:
-            st.subheader("🔢 Numeric Stats")
-            num_df = df.select_dtypes(include=['number'])
-            if not num_df.empty:
-                st.dataframe(num_df.describe().T, use_container_width=True, height=200)
-            else:
-                st.info("No numeric columns.")
-                
-        with col_cat:
-            st.subheader("🔤 Text Stats")
-            cat_df = df.select_dtypes(include=['object'])
-            if not cat_df.empty:
-                st.dataframe(cat_df.describe().T, use_container_width=True, height=200)
-            else:
-                st.info("No text columns.")
+        st.divider()
+        st.dataframe(df.head(), use_container_width=True)
 
-    # --- TAB 2: NOTEBOOK ---
+    # --- NOTEBOOK TAB ---
     with tab2:
-        st.markdown("### 📓 AI Computational Notebook")
+        st.markdown("### 📓 AI Notebook")
         
-        # Quick Actions
-        with st.expander("🛠️ Analyst Toolkit (Quick Actions)", expanded=False):
-            c1, c2, c3, c4 = st.columns(4)
-            if c1.button("👁️ Show Head"):
-                st.session_state.chat_history.append({"role": "user", "content": "Show head"})
-                st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.head())", "type": "code"})
-            if c2.button("ℹ️ Data Info"):
-                st.session_state.chat_history.append({"role": "user", "content": "Show info"})
-                buffer = io.StringIO(); df.info(buf=buffer); s = buffer.getvalue()
-                st.session_state.chat_history.append({"role": "assistant", "code": f"st.text('''{s}''')", "type": "code"})
-            if c3.button("📉 Missing Map"):
-                st.session_state.chat_history.append({"role": "user", "content": "Show missing"})
-                st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.isnull().sum())", "type": "code"})
-            if c4.button("🧹 Auto-Clean"):
-                st.session_state.quick_prompt = "Identify missing values. Fill numeric missing values with 0. Remove duplicates. Show the clean head."
-
         # Chat History
         for msg in st.session_state.chat_history:
             if msg["role"] == "user":
@@ -192,58 +141,49 @@ if st.session_state.df is not None:
                         with st.status("Executed Code", state="complete"):
                             st.code(msg["code"], language="python")
                         try:
-                            local_scope = {"df": df, "pd": pd, "st": st, "px": px, "plt": plt, "sns": sns}
+                            local_scope = {"df": df, "pd": pd, "st": st, "px": px}
                             exec(msg["code"], globals(), local_scope)
                         except: pass
 
         # Input
-        user_input = st.chat_input("Ask the Pilot (e.g., 'Plot Sales vs Profit')...")
-        if 'quick_prompt' in st.session_state:
-            user_input = st.session_state.pop('quick_prompt')
+        user_input = st.chat_input("Ask (e.g., 'Plot Price vs Reviews')...")
 
         if user_input:
-            if not ai_available:
-                st.error("⚠️ Please enter a valid API Key in the sidebar first.")
-            else:
-                st.session_state.chat_history.append({"role": "user", "content": user_input})
-                st.chat_message("user").write(user_input)
-                
-                with st.chat_message("assistant"):
-                    with st.spinner("Pilot is coding..."):
-                        try:
-                            buffer = io.StringIO(); df.info(buf=buffer); info_str = buffer.getvalue()
-                            prompt = f"""
-                            You are a Python Data Analyst using Streamlit.
-                            USER COMMAND: {user_input}
-                            DATAFRAME INFO: {info_str}
-                            HEADERS: {list(df.columns)}
-                            RULES:
-                            1. Write Python code to manipulate 'df'.
-                            2. Use 'plotly.express' as 'px'.
-                            3. Use st.write() to display text/tables.
-                            4. Output ONLY valid Python code. No markdown.
-                            """
+            st.session_state.chat_history.append({"role": "user", "content": user_input})
+            st.chat_message("user").write(user_input)
+            
+            with st.chat_message("assistant"):
+                with st.spinner("Analyzing..."):
+                    try:
+                        buffer = io.StringIO(); df.info(buf=buffer); info_str = buffer.getvalue()
+                        
+                        prompt = f"""
+                        You are a Python Data Analyst.
+                        User Request: {user_input}
+                        Data Info: {info_str}
+                        Columns: {list(df.columns)}
+                        
+                        Rules:
+                        1. Write Python code to solve the request.
+                        2. The dataframe is named 'df'.
+                        3. Use 'plotly.express' as 'px' for charts.
+                        4. Output ONLY the code block. No markdown wrapper needed.
+                        """
+                        
+                        response = get_gemini_response(prompt)
+                        
+                        if hasattr(response, 'text'):
+                            code = response.text.replace("```python", "").replace("```", "").strip()
                             
-                            response = get_gemini_response(prompt)
+                            with st.status("Executed Code", state="complete"):
+                                st.code(code, language='python')
                             
-                            # Robust Code Extraction
-                            if hasattr(response, 'text'):
-                                code = response.text.replace("```python", "").replace("```", "").strip()
-                                
-                                save_data_history()
-                                with st.status("Executed Code", state="complete"):
-                                    st.code(code, language='python')
-                                
-                                local_scope = {"df": df, "pd": pd, "st": st, "px": px, "plt": plt, "sns": sns}
-                                exec(code, globals(), local_scope)
-                                
-                                st.session_state.df = local_scope['df']
-                                st.session_state.chat_history.append({"role": "assistant", "code": code, "type": "code"})
-                            else:
-                                st.error(f"AI Error: {response}")
-                                
-                        except Exception as e:
-                            st.error(f"Error: {e}")
-
-else:
-    st.info("👈 Upload a CSV to start.")
+                            local_scope = {"df": df, "pd": pd, "st": st, "px": px}
+                            exec(code, globals(), local_scope)
+                            
+                            st.session_state.chat_history.append({"role": "assistant", "code": code, "type": "code"})
+                        else:
+                            st.error(f"AI Error: {response}")
+                            
+                    except Exception as e:
+                        st.error(f"Error: {e}")
