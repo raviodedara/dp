@@ -207,16 +207,17 @@ else:
                         buffer = io.StringIO(); df.info(buf=buffer); info_str = buffer.getvalue()
                         
                         prompt = f"""
-                        You are a Python Data Analyst.
+                        You are a Python Data Analyst using Streamlit.
                         User Request: {user_input}
                         Data Info: {info_str}
                         Columns: {list(df.columns)}
                         
-                        Rules:
-                        1. Write Python code to solve the request.
-                        2. The dataframe is named 'df'.
-                        3. Use 'plotly.express' as 'px' for charts.
-                        4. Output ONLY the code block. No markdown wrapper needed.
+                        CRITICAL RULES:
+                        1. The dataframe is named 'df'.
+                        2. If the user asks for a chart, create it using 'plotly.express' as 'px'.
+                        3. AFTER creating the chart, YOU MUST DISPLAY IT using: st.plotly_chart(fig)
+                        4. If calculating a number/table, DISPLAY IT using: st.write()
+                        5. Output ONLY the executable Python code. No text explanations.
                         """
                         
                         response = get_gemini_response(prompt)
@@ -239,3 +240,4 @@ else:
                             
                     except Exception as e:
                         st.error(f"Error: {e}")
+
