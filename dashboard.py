@@ -41,27 +41,28 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. SIDEBAR (The Login & Controls) ---
+# --- 4. SIDEBAR ---
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/2103/2103633.png", width=50)
     st.title("Data Pilot")
     
-    # --- API KEY INPUT (The "Bring Your Own Key" Fix) ---
+    # --- API Key Section (Updated) ---
     api_input = st.text_input(
         "Enter Gemini API Key", 
         type="password", 
         placeholder="Paste key here...",
-        help="Get a free key at aistudio.google.com",
         value=st.session_state.user_api_key
     )
     
-    # Save key to session state so it persists
+    # The "How to get key" Link
+    st.markdown("👉 [**Get your Free API Key here**](https://aistudio.google.com/app/apikey)")
+    
     if api_input:
         st.session_state.user_api_key = api_input
     
     st.markdown("---")
     
-    # FILE UPLOADER
+    # File Uploader
     uploaded_file = st.file_uploader("📂 Upload Dataset", type=["csv"])
     if uploaded_file is not None:
         if 'last_file' not in st.session_state or st.session_state.last_file != uploaded_file.name:
@@ -73,7 +74,7 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # EXPORT & UNDO CONTROLS
+    # Controls
     if st.session_state.df is not None:
         st.markdown("**💾 Export Options**")
         csv = st.session_state.df.to_csv(index=False).encode('utf-8')
@@ -94,17 +95,14 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("Want the Source Code? [**Get it here**](YOUR_GUMROAD_LINK)")
 
-# --- 5. AI LOGIC (Auto-Detect Fix) ---
+# --- 5. AI LOGIC (Auto-Detect) ---
 def get_gemini_response(prompt):
-    """Dynamically finds a working model for the user's key."""
     try:
-        # Check what models this key can see
         available_models = []
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 available_models.append(m.name)
         
-        # Pick the best one (Flash -> Pro -> First Available)
         chosen_model = next((m for m in available_models if 'flash' in m), None)
         if not chosen_model:
             chosen_model = next((m for m in available_models if 'pro' in m), None)
@@ -115,8 +113,7 @@ def get_gemini_response(prompt):
             model = genai.GenerativeModel(chosen_model)
             return model.generate_content(prompt)
         else:
-            return "Error: No compatible Gemini models found for this API Key."
-
+            return "Error: No compatible Gemini models found."
     except Exception as e:
         return f"Connection Error: {str(e)}"
 
@@ -126,16 +123,14 @@ def save_data_history():
         if len(st.session_state.history) > 5:
             st.session_state.history.pop(0)
 
-# --- 6. MAIN APP LOGIC ---
+# --- 6. MAIN APP ---
 st.markdown('<p class="title-text">Data Pilot</p>', unsafe_allow_html=True)
 
-# GUARD CLAUSE: Stop if no key
 if not st.session_state.user_api_key:
     st.warning("👈 Please enter your Google Gemini API Key in the sidebar to start.")
 elif st.session_state.df is None:
     st.info("👈 Upload a CSV file in the sidebar to begin.")
 else:
-    # Initialize API
     try:
         genai.configure(api_key=st.session_state.user_api_key)
     except Exception as e:
@@ -146,7 +141,7 @@ else:
     # TABS
     tab1, tab2 = st.tabs(["📊 Dashboard", "👨🏼‍✈️ Analyst Notebook"])
 
-    # --- TAB 1: DASHBOARD ---
+    # --- DASHBOARD ---
     with tab1:
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Rows", df.shape[0])
@@ -157,27 +152,11 @@ else:
         st.write("### Data Preview")
         st.dataframe(df.head(), use_container_width=True)
 
-    # --- TAB 2: NOTEBOOK ---
+    # --- NOTEBOOK (Chat Logic) ---
     with tab2:
         st.markdown("### 📓 AI Notebook")
         
-        # TOOLKIT (Quick Actions)
-        with st.expander("🛠️ Analyst Toolkit (Quick Actions)", expanded=False):
-            c1, c2, c3, c4 = st.columns(4)
-            if c1.button("👁️ Show Head"):
-                st.session_state.chat_history.append({"role": "user", "content": "Show head"})
-                st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.head())", "type": "code"})
-            if c2.button("ℹ️ Data Info"):
-                st.session_state.chat_history.append({"role": "user", "content": "Show info"})
-                buffer = io.StringIO(); df.info(buf=buffer); s = buffer.getvalue()
-                st.session_state.chat_history.append({"role": "assistant", "code": f"st.text('''{s}''')", "type": "code"})
-            if c3.button("📉 Missing Map"):
-                st.session_state.chat_history.append({"role": "user", "content": "Show missing"})
-                st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.isnull().sum())", "type": "code"})
-            if c4.button("🧹 Auto-Clean"):
-                st.session_state.quick_prompt = "Identify missing values. Fill numeric missing values with 0. Remove duplicates. Show the clean head."
-
-        # CHAT HISTORY
+        # 1. DISPLAY HISTORY (The "Scrollable" Part)
         for msg in st.session_state.chat_history:
             if msg["role"] == "user":
                 st.chat_message("user").write(msg["content"])
@@ -188,16 +167,16 @@ else:
                         with st.status("Executed Code", state="complete"):
                             st.code(msg["code"], language="python")
                         try:
+                            # Re-execute code on refresh
                             local_scope = {"df": df, "pd": pd, "st": st, "px": px, "plt": plt, "sns": sns}
                             exec(msg["code"], globals(), local_scope)
                         except: pass
 
-        # INPUT
+        # 2. CHAT INPUT (Pinned to Bottom)
         user_input = st.chat_input("Ask (e.g., 'Plot Price vs Reviews')...")
-        if 'quick_prompt' in st.session_state:
-            user_input = st.session_state.pop('quick_prompt')
 
         if user_input:
+            # Show User Message Immediately
             st.session_state.chat_history.append({"role": "user", "content": user_input})
             st.chat_message("user").write(user_input)
             
@@ -206,27 +185,24 @@ else:
                     try:
                         buffer = io.StringIO(); df.info(buf=buffer); info_str = buffer.getvalue()
                         
-                        # --- THE NEW "SMART" PROMPT ---
+                        # THE SMART PROMPT
                         prompt = f"""
                         You are an expert Python Data Scientist.
-                        Your goal is to write executable Python code to answer the user's question using the dataframe 'df'.
-
+                        Your goal is to write executable Python code to answer the user's question.
+                        
                         METADATA:
-                        - Columns: {list(df.columns)}
-                        - Data Info: {info_str}
-
+                        Columns: {list(df.columns)}
+                        Data Info: {info_str}
+                        
                         USER QUESTION: {user_input}
-
-                        STRICT CODING RULES:
-                        1. **Visualization:** Use 'plotly.express' as 'px'.
-                           - CRITICAL: You MUST display the plot using `st.plotly_chart(fig)` immediately after creating it. If you don't run this command, the chart will be invisible.
-                           - **Maps:** If the user asks for a map, use `px.scatter_mapbox`. You MUST set `zoom=10` and `mapbox_style="open-street-map"` (otherwise the map will be blank).
                         
-                        2. **Text/Tables:** Use `st.write()` or `st.dataframe()` to display any text or calculation results.
-                        
-                        3. **Format:** Return ONLY the raw Python code. Do not use Markdown blocks (```python). Do not write explanations, just code.
+                        STRICT RULES:
+                        1. Use 'plotly.express' as 'px' for visualizations.
+                        2. CRITICAL: You MUST display charts using `st.plotly_chart(fig)`.
+                        3. CRITICAL: For text/numbers, use `st.write()`.
+                        4. MAPS: Use `px.scatter_mapbox`. Set `mapbox_style="open-street-map"` and `zoom=10`.
+                        5. Return ONLY Python code. No markdown formatting.
                         """
-                        # --------------------------------
                         
                         response = get_gemini_response(prompt)
                         
@@ -235,6 +211,7 @@ else:
                             
                             save_data_history()
                             
+                            # Execute and Show
                             with st.status("Executed Code", state="complete"):
                                 st.code(code, language='python')
                             
