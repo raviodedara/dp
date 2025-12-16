@@ -46,15 +46,13 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/2103/2103633.png", width=50)
     st.title("Data Pilot")
     
-    # --- API Key Section (Updated) ---
+    # --- API Key Section ---
     api_input = st.text_input(
         "Enter Gemini API Key", 
         type="password", 
         placeholder="Paste key here...",
         value=st.session_state.user_api_key
     )
-    
-    # The "How to get key" Link
     st.markdown("👉 [**Get your Free API Key here**](https://aistudio.google.com/app/apikey)")
     
     if api_input:
@@ -152,11 +150,27 @@ else:
         st.write("### Data Preview")
         st.dataframe(df.head(), use_container_width=True)
 
-    # --- NOTEBOOK (Chat Logic) ---
+    # --- NOTEBOOK ---
     with tab2:
         st.markdown("### 📓 AI Notebook")
         
-        # 1. DISPLAY HISTORY (The "Scrollable" Part)
+        # 1. ANALYST TOOLKIT (RESTORED)
+        with st.expander("🛠️ Analyst Toolkit (Quick Actions)", expanded=False):
+            c1, c2, c3, c4 = st.columns(4)
+            if c1.button("👁️ Show Head"):
+                st.session_state.chat_history.append({"role": "user", "content": "Show head"})
+                st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.head())", "type": "code"})
+            if c2.button("ℹ️ Data Info"):
+                st.session_state.chat_history.append({"role": "user", "content": "Show info"})
+                buffer = io.StringIO(); df.info(buf=buffer); s = buffer.getvalue()
+                st.session_state.chat_history.append({"role": "assistant", "code": f"st.text('''{s}''')", "type": "code"})
+            if c3.button("📉 Missing Map"):
+                st.session_state.chat_history.append({"role": "user", "content": "Show missing"})
+                st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.isnull().sum())", "type": "code"})
+            if c4.button("🧹 Auto-Clean"):
+                st.session_state.quick_prompt = "Identify missing values. Fill numeric missing values with 0. Remove duplicates. Show the clean head."
+
+        # 2. CHAT HISTORY
         for msg in st.session_state.chat_history:
             if msg["role"] == "user":
                 st.chat_message("user").write(msg["content"])
@@ -167,16 +181,18 @@ else:
                         with st.status("Executed Code", state="complete"):
                             st.code(msg["code"], language="python")
                         try:
-                            # Re-execute code on refresh
                             local_scope = {"df": df, "pd": pd, "st": st, "px": px, "plt": plt, "sns": sns}
                             exec(msg["code"], globals(), local_scope)
                         except: pass
 
-        # 2. CHAT INPUT (Pinned to Bottom)
+        # 3. CHAT INPUT
         user_input = st.chat_input("Ask (e.g., 'Plot Price vs Reviews')...")
+        
+        # Check for Quick Prompt trigger
+        if 'quick_prompt' in st.session_state:
+            user_input = st.session_state.pop('quick_prompt')
 
         if user_input:
-            # Show User Message Immediately
             st.session_state.chat_history.append({"role": "user", "content": user_input})
             st.chat_message("user").write(user_input)
             
@@ -185,7 +201,6 @@ else:
                     try:
                         buffer = io.StringIO(); df.info(buf=buffer); info_str = buffer.getvalue()
                         
-                        # THE SMART PROMPT
                         prompt = f"""
                         You are an expert Python Data Scientist.
                         Your goal is to write executable Python code to answer the user's question.
@@ -211,7 +226,6 @@ else:
                             
                             save_data_history()
                             
-                            # Execute and Show
                             with st.status("Executed Code", state="complete"):
                                 st.code(code, language='python')
                             
