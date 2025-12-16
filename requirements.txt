@@ -1,6 +1,6 @@
 streamlit
 pandas
+plotly
 google-generativeai>=0.7.0
 matplotlib
 seaborn
-plotly
