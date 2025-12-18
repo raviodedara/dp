@@ -12,6 +12,8 @@ st.set_page_config(page_title="Data Pilot", page_icon="✈️", layout="wide")
 # --- 2. SESSION STATE SETUP ---
 if 'df' not in st.session_state:
     st.session_state.df = None
+if 'original_df' not in st.session_state:
+    st.session_state.original_df = None  # <--- THE VAULT
 if 'history' not in st.session_state:
     st.session_state.history = [] 
 if 'chat_history' not in st.session_state:
@@ -64,7 +66,10 @@ with st.sidebar:
     uploaded_file = st.file_uploader("📂 Upload Dataset", type=["csv"])
     if uploaded_file is not None:
         if 'last_file' not in st.session_state or st.session_state.last_file != uploaded_file.name:
-            st.session_state.df = pd.read_csv(uploaded_file)
+            # LOAD DATA ONCE
+            loaded_df = pd.read_csv(uploaded_file)
+            st.session_state.original_df = loaded_df.copy() # Save Safe Copy
+            st.session_state.df = loaded_df.copy()          # Working Copy
             st.session_state.last_file = uploaded_file.name
             st.session_state.history = [] 
             st.session_state.chat_history = []
@@ -75,7 +80,6 @@ with st.sidebar:
     # Controls
     if st.session_state.df is not None:
         st.markdown("**💾 Export Options**")
-        # EXPORT BUTTON (Updated to always grab the LATEST df)
         csv = st.session_state.df.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="Download Current CSV", 
@@ -91,15 +95,21 @@ with st.sidebar:
                 if st.session_state.history:
                     st.session_state.df = st.session_state.history.pop()
                     st.session_state.chat_history.append({"role": "system", "content": "↺ Undid last action"})
-                    st.rerun() # Force refresh to update Export button
+                    st.rerun()
         with col_clear:
             if st.button("🗑️ Clear Chat", use_container_width=True):
                 st.session_state.chat_history = []
                 st.rerun()
+
+        # RESET BUTTON (The "Go back to OG" button)
+        if st.button("🔄 Reset to Original", use_container_width=True):
+            st.session_state.df = st.session_state.original_df.copy()
+            st.session_state.history = []
+            st.session_state.chat_history.append({"role": "system", "content": "🔄 Data reset to original upload."})
+            st.rerun()
             
     st.markdown("---")
-    # LINK FIX: Replace '#' with your actual Gumroad URL
-    st.markdown("Want the Source Code? [**Get it here**](https://raviodedara.gumroad.com/l/rvod)") 
+    st.markdown("Want the Source Code? [**Get it here**](#)") 
 
 # --- 5. AI LOGIC (Auto-Detect) ---
 def get_gemini_response(prompt):
@@ -162,7 +172,7 @@ else:
     with tab2:
         st.markdown("### 📓 AI Notebook")
         
-        # 1. ANALYST TOOLKIT
+        # 1. TOOLKIT
         with st.expander("🛠️ Analyst Toolkit (Quick Actions)", expanded=False):
             c1, c2, c3, c4 = st.columns(4)
             if c1.button("👁️ Show Head"):
@@ -189,13 +199,22 @@ else:
                         with st.status("Executed Code", state="complete"):
                             st.code(msg["code"], language="python")
                         try:
-                            local_scope = {"df": df, "pd": pd, "st": st, "px": px, "plt": plt, "sns": sns}
+                            # Pass original_df to scope
+                            local_scope = {
+                                "df": df, 
+                                "original_df": st.session_state.original_df,
+                                "pd": pd, "st": st, "px": px, "plt": plt, "sns": sns
+                            }
                             exec(msg["code"], globals(), local_scope)
                         except: pass
 
         # 3. CHAT INPUT
         user_input = st.chat_input("Ask (e.g., 'Plot Price vs Reviews')...")
         
+        # PRO TIP: Tell users about the OG feature
+        if not user_input:
+            st.caption("💡 Tip: Changes apply to 'df'. To compare with raw data, mention 'original data' or 'OG'.")
+
         if 'quick_prompt' in st.session_state:
             user_input = st.session_state.pop('quick_prompt')
 
@@ -208,10 +227,13 @@ else:
                     try:
                         buffer = io.StringIO(); df.info(buf=buffer); info_str = buffer.getvalue()
                         
-                        # --- THE "PRO ANALYST" PROMPT ---
+                        # --- PRO PROMPT (Updated for OG Logic) ---
                         prompt = f"""
                         You are an expert Python Data Scientist.
-                        Your goal is to write executable Python code to answer the user's question.
+                        
+                        VARIABLES AVAILABLE:
+                        1. `df` (The Active DataFrame) -> Apply all edits/cleaning here.
+                        2. `original_df` (The Immutable Backup) -> Use ONLY for comparison/viewing. NEVER modify this.
                         
                         METADATA:
                         Columns: {list(df.columns)}
@@ -221,8 +243,8 @@ else:
                         
                         STRICT LOGIC RULES:
                         1. **ACTION vs VIEW:**
-                           - If the user uses verbs like "REMOVE", "DROP", "FILTER", "CLEAN", "DELETE", or "FILL": You MUST modify the 'df' variable directly. (e.g., `df = df.drop(...)`, `df = df[df['col'] > 0]`).
-                           - If the user uses verbs like "SHOW", "PLOT", "DESCRIBE", "PRINT": Do NOT modify 'df'. Just display the result (e.g., `st.write(df.head())`).
+                           - If the user uses verbs like "REMOVE", "DROP", "FILTER", "CLEAN", "DELETE": You MUST modify 'df'. (e.g. `df = df.drop(...)`).
+                           - If the user asks for "Original", "OG", or "Raw" data: Use `original_df` in your code (e.g. `st.write(original_df.head())`).
                         
                         2. **VISUALIZATION:** Use 'plotly.express' as 'px'. You MUST use `st.plotly_chart(fig)`.
                         
@@ -238,20 +260,22 @@ else:
                         if hasattr(response, 'text'):
                             code = response.text.replace("```python", "").replace("```", "").strip()
                             
-                            # SAVE OLD STATE FOR UNDO
                             save_data_history()
                             
                             with st.status("Executed Code", state="complete"):
                                 st.code(code, language='python')
                             
-                            local_scope = {"df": df, "pd": pd, "st": st, "px": px, "plt": plt, "sns": sns}
+                            # EXECUTION SCOPE (Crucial: Give access to original_df)
+                            local_scope = {
+                                "df": df, 
+                                "original_df": st.session_state.original_df,
+                                "pd": pd, "st": st, "px": px, "plt": plt, "sns": sns
+                            }
                             exec(code, globals(), local_scope)
                             
-                            # UPDATE STATE
                             st.session_state.df = local_scope['df']
                             st.session_state.chat_history.append({"role": "assistant", "code": code, "type": "code"})
                             
-                            # FORCE REFRESH (Fixes Export Button)
                             st.rerun()
                             
                         else:
