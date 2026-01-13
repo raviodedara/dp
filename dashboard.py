@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from google import genai
 import io
+import time
 import traceback
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -37,7 +38,7 @@ st.markdown("""
 # --- 4. SIDEBAR ---
 with st.sidebar:
     st.markdown("## 👨🏼‍✈️ Data Pilot Ultra")
-    st.caption("Version 5.0 | High-Stability Intelligence")
+    st.caption("Version 6.0 | Extreme Stability Core")
     
     api_key = st.secrets.get("GEMINI_API_KEY")
     if not api_key:
@@ -78,10 +79,10 @@ with st.sidebar:
         csv = st.session_state.df.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Export CSV", data=csv, file_name="datapilot_export.csv", width="stretch")
 
-# --- 5. INTELLIGENT FAILOVER LOGIC ---
+# --- 5. HIGH-STABILITY FAILOVER LOGIC ---
 def get_advanced_ai_response(prompt, key):
-    # Try latest model first, fall back to stable if quota reached
-    models_to_try = ['gemini-2.0-flash', 'gemini-1.5-flash']
+    # Fixed model names for the 2026 google-genai library
+    models_to_try = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']
     errors = []
     
     for model_name in models_to_try:
@@ -93,7 +94,11 @@ def get_advanced_ai_response(prompt, key):
             )
             return response, None
         except Exception as e:
-            errors.append(f"Model {model_name} failed: {str(e)}")
+            err_msg = str(e)
+            errors.append(f"Model {model_name} failed: {err_msg}")
+            # If rate limited, wait a moment before trying the next model
+            if "429" in err_msg:
+                time.sleep(2)
             continue
             
     return None, "\n\n".join(errors)
@@ -107,14 +112,13 @@ elif st.session_state.df is None:
     st.info("👋 Pilot is ready. Please upload a dataset to begin the analysis.")
 else:
     df = st.session_state.df
-    tab1, tab2 = st.tabs(["📊 Live Dashboard", "🧠 Analyst Notebook"])
+    tab1, tab2 = st.tabs(["📊 Live Dashboard", "🧠 AI Analyst Notebook"])
 
     with tab1:
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Rows", df.shape[0])
         c2.metric("Features", df.shape[1])
         c3.metric("Completeness", f"{(1 - df.isnull().mean().mean())*100:.1f}%")
-        # Handle cases where no numeric columns exist
         numeric_df = df.select_dtypes(include=[np.number])
         skew_val = numeric_df.skew().mean() if not numeric_df.empty else 0
         c4.metric("Skewness", f"{skew_val:.2f}")
@@ -131,7 +135,7 @@ else:
                 st.session_state.chat_history.append({"role": "user", "content": "Analyze missing values"})
                 st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.isnull().sum())"})
             if t3.button("🧹 Clean", width="stretch"):
-                st.session_state.quick_prompt = "Perform professional data cleaning: fix types and handle missing values. Assign the result to 'df'."
+                st.session_state.quick_prompt = "Perform professional data cleaning: fix types and handle missing values. Assign result to 'df'."
             if t4.button("📊 Stats", width="stretch"):
                 st.session_state.chat_history.append({"role": "user", "content": "Show descriptive statistics"})
                 st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.describe())"})
@@ -173,7 +177,6 @@ else:
                             st.markdown(f'<div class="error-log">{error_details}</div>', unsafe_allow_html=True)
                     elif hasattr(response, 'text'):
                         try:
-                            # Robust code extraction
                             if "```python" in response.text:
                                 code = response.text.split("```python")[-1].split("```")[0].strip()
                             else:
