@@ -1,288 +1,165 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import google.generativeai as genai
 import io
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
+import plotly.graph_objects as go
+from sklearn import preprocessing, cluster, decomposition, linear_model
+import statsmodels.api as sm
+import altair as alt
 
 # --- 1. CONFIGURATION ---
-st.set_page_config(page_title="Data Pilot", page_icon="✈️", layout="wide")
+st.set_page_config(page_title="Data Pilot Ultra", page_icon="🚀", layout="wide")
 
-# --- 2. SESSION STATE SETUP ---
-if 'df' not in st.session_state:
-    st.session_state.df = None
-if 'original_df' not in st.session_state:
-    st.session_state.original_df = None  # <--- THE VAULT
-if 'history' not in st.session_state:
-    st.session_state.history = [] 
-if 'chat_history' not in st.session_state:
-    st.session_state.chat_history = [] 
-if 'user_api_key' not in st.session_state:
-    st.session_state.user_api_key = ""
+# --- 2. SESSION STATE (The Brain's Memory) ---
+if 'df' not in st.session_state: st.session_state.df = None
+if 'original_df' not in st.session_state: st.session_state.original_df = None
+if 'history' not in st.session_state: st.session_state.history = [] 
+if 'chat_history' not in st.session_state: st.session_state.chat_history = [] 
 
-# --- 3. CUSTOM CSS ---
+# --- 3. CUSTOM CSS (The Professional Look) ---
 st.markdown("""
     <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
     .title-text {
-        font-size: 50px;
-        font-weight: 900;
-        background: -webkit-linear-gradient(45deg, #1E88E5, #FF4B4B);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        font-size: 55px; font-weight: 900;
+        background: -webkit-linear-gradient(left, #00C9FF, #92FE9D);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     }
-    .stChatMessage {
-        background-color: #f9f9f9;
-        border-radius: 10px;
-        padding: 10px;
-        margin-bottom: 10px;
-        border: 1px solid #ddd;
-    }
+    .stChatMessage { border-radius: 15px; border: 1px solid #e0e0e0; margin-bottom: 15px; }
+    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
+    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; font-weight: 600; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. SIDEBAR ---
+# --- 4. SIDEBAR (The Control Room) ---
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/2103/2103633.png", width=50)
-    st.title("Data Pilot")
+    st.markdown("## 👨🏼‍✈️ Data Pilot Ultra")
+    st.caption("Version 2.0 | Advanced Analytics Engine")
     
-    # --- COMMENTED OUT BYOK SECTION (As requested) ---
-    # api_input = st.text_input(
-    #     "Enter Gemini API Key", 
-    #     type="password", 
-    #     placeholder="Paste key here...",
-    #     value=st.session_state.user_api_key
-    # )
-    # st.markdown("👉 [**Get your Free API Key here**](https://aistudio.google.com/app/apikey)")
+    # COMMENTED OUT BYOK (Using Secrets as requested)
+    # api_input = st.text_input("Enter API Key", type="password")
     
-    # if api_input:
-    #     st.session_state.user_api_key = api_input
-    # ------------------------------------------------
-    
-    st.markdown("---")
-    
-    # File Uploader
-    uploaded_file = st.file_uploader("📂 Upload Dataset", type=["csv"])
-    if uploaded_file is not None:
+    st.divider()
+    uploaded_file = st.file_uploader("📂 Feed the Agent Data", type=["csv", "xlsx"])
+    if uploaded_file:
         if 'last_file' not in st.session_state or st.session_state.last_file != uploaded_file.name:
-            # LOAD DATA ONCE
-            loaded_df = pd.read_csv(uploaded_file)
-            st.session_state.original_df = loaded_df.copy() # Save Safe Copy
-            st.session_state.df = loaded_df.copy()          # Working Copy
+            if uploaded_file.name.endswith('.csv'):
+                loaded_df = pd.read_csv(uploaded_file)
+            else:
+                loaded_df = pd.read_excel(uploaded_file)
+            st.session_state.original_df = loaded_df.copy()
+            st.session_state.df = loaded_df.copy()
             st.session_state.last_file = uploaded_file.name
-            st.session_state.history = [] 
             st.session_state.chat_history = []
-            st.success("New Data Loaded!")
-    
-    st.markdown("---")
-    
-    # Controls
-    if st.session_state.df is not None:
-        st.markdown("**💾 Export Options**")
-        csv = st.session_state.df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="Download Current CSV", 
-            data=csv, 
-            file_name="pilot_cleaned_data.csv", 
-            mime="text/csv", 
-            use_container_width=True
-        )
-        
-        col_undo, col_clear = st.columns(2)
-        with col_undo:
-            if st.button("↺ Undo", use_container_width=True):
-                if st.session_state.history:
-                    st.session_state.df = st.session_state.history.pop()
-                    st.session_state.chat_history.append({"role": "system", "content": "↺ Undid last action"})
-                    st.rerun()
-        with col_clear:
-            if st.button("🗑️ Clear Chat", use_container_width=True):
-                st.session_state.chat_history = []
-                st.rerun()
+            st.success("Intelligence Synchronized.")
 
-        # RESET BUTTON (The "Go back to OG" button)
-        if st.button("🔄 Reset to Original", use_container_width=True):
+    if st.session_state.df is not None:
+        st.divider()
+        st.markdown("### 🛠️ Global Commands")
+        if st.button("🔄 Reset Environment"):
             st.session_state.df = st.session_state.original_df.copy()
             st.session_state.history = []
-            st.session_state.chat_history.append({"role": "system", "content": "🔄 Data reset to original upload."})
+            st.session_state.chat_history.append({"role": "system", "content": "Environment Reset to Original."})
             st.rerun()
-            
-    st.markdown("---")
-    st.markdown("Want the Source Code? [**Get it here**](#)") 
-
-# --- 5. AI LOGIC (Auto-Detect) ---
-def get_gemini_response(prompt):
-    try:
-        available_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
         
-        chosen_model = next((m for m in available_models if 'flash' in m), None)
-        if not chosen_model:
-            chosen_model = next((m for m in available_models if 'pro' in m), None)
-        if not chosen_model and available_models:
-            chosen_model = available_models[0]
-            
-        if chosen_model:
-            model = genai.GenerativeModel(chosen_model)
-            return model.generate_content(prompt)
-        else:
-            return "Error: No compatible Gemini models found."
-    except Exception as e:
-        return f"Connection Error: {str(e)}"
+        csv = st.session_state.df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Export Current Intelligence", data=csv, file_name="datapilot_export.csv", use_container_width=True)
 
-def save_data_history():
-    if st.session_state.df is not None:
-        st.session_state.history.append(st.session_state.df.copy())
-        if len(st.session_state.history) > 5:
-            st.session_state.history.pop(0)
-
-# --- 6. MAIN APP (Updated for Secrets) ---
-st.markdown('<p class="title-text">Data Pilot</p>', unsafe_allow_html=True)
-
-# MODIFIED: Check st.secrets instead of user_api_key
-if "GEMINI_API_KEY" not in st.secrets:
-    st.warning("👈 Developer Configuration Required: Please add 'GEMINI_API_KEY' to Streamlit Secrets.")
-elif st.session_state.df is None:
-    st.info("👈 Upload a CSV file in the sidebar to begin.")
-else:
+# --- 5. AI EXECUTION LOGIC ---
+def get_advanced_ai_response(prompt):
     try:
-        # Use the secret key
         genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        # Use Gemini 1.5 Pro for 'World Class' reasoning
+        model = genai.GenerativeModel('gemini-1.5-pro')
+        return model.generate_content(prompt)
     except Exception as e:
-        st.error(f"API Key Error: {e}")
+        return f"Intelligence Link Error: {str(e)}"
 
+# --- 6. MAIN INTERFACE ---
+st.markdown('<p class="title-text">Data Pilot Ultra</p>', unsafe_allow_html=True)
+
+if "GEMINI_API_KEY" not in st.secrets:
+    st.warning("⚠️ Configuration Required: Please add GEMINI_API_KEY to Streamlit Secrets.")
+elif st.session_state.df is None:
+    st.info("👋 I am your Advanced AI Analyst. Upload a dataset to begin the deep-dive.")
+else:
     df = st.session_state.df
-    
-    # TABS
-    tab1, tab2 = st.tabs(["📊 Dashboard", "👨🏼‍✈️ Analyst Notebook"])
+    tab1, tab2, tab3 = st.tabs(["📊 Global Dashboard", "🧠 AI Analyst Notebook", "📜 Knowledge Audit"])
 
-    # --- DASHBOARD ---
     with tab1:
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Rows", df.shape[0])
-        c2.metric("Columns", df.shape[1])
-        c3.metric("Missing", df.isnull().sum().sum())
-        c4.metric("Duplicates", df.duplicated().sum())
-        st.divider()
-        st.write("### Data Preview")
-        st.dataframe(df.head(), use_container_width=True)
+        c1.metric("Data Points", df.size)
+        c2.metric("Features", df.shape[1])
+        c3.metric("Completeness", f"{(1 - df.isnull().mean().mean())*100:.1f}%")
+        c4.metric("Skewness", f"{df.skew(numeric_only=True).mean():.2f}")
+        st.write("### Active Intelligence Layer")
+        st.dataframe(df, use_container_width=True)
 
-    # --- NOTEBOOK ---
     with tab2:
-        st.markdown("### 📓 AI Notebook")
-        
-        # 1. TOOLKIT
-        with st.expander("🛠️ Analyst Toolkit (Quick Actions)", expanded=False):
-            c1, c2, c3, c4 = st.columns(4)
-            if c1.button("👁️ Show Head"):
-                st.session_state.chat_history.append({"role": "user", "content": "Show head"})
-                st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.head())", "type": "code"})
-            if c2.button("ℹ️ Data Info"):
-                st.session_state.chat_history.append({"role": "user", "content": "Show info"})
-                buffer = io.StringIO(); df.info(buf=buffer); s = buffer.getvalue()
-                st.session_state.chat_history.append({"role": "assistant", "code": f"st.text('''{s}''')", "type": "code"})
-            if c3.button("📉 Missing Map"):
-                st.session_state.chat_history.append({"role": "user", "content": "Show missing"})
-                st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.isnull().sum())", "type": "code"})
-            if c4.button("🧹 Auto-Clean"):
-                st.session_state.quick_prompt = "Identify missing values. Fill numeric missing values with 0. Remove duplicates. Assign the result back to 'df'. Show the clean head."
-
-        # 2. CHAT HISTORY
         for msg in st.session_state.chat_history:
-            if msg["role"] == "user":
-                st.chat_message("user").write(msg["content"])
-            elif msg["role"] == "assistant":
-                with st.chat_message("assistant"):
-                    if "content" in msg: st.write(msg["content"])
-                    if "code" in msg:
-                        with st.status("Executed Code", state="complete"):
-                            st.code(msg["code"], language="python")
-                        try:
-                            # Pass original_df to scope
-                            local_scope = {
-                                "df": df, 
-                                "original_df": st.session_state.original_df,
-                                "pd": pd, "st": st, "px": px, "plt": plt, "sns": sns
-                            }
-                            exec(msg["code"], globals(), local_scope)
-                        except: pass
+            with st.chat_message(msg["role"]):
+                if "content" in msg: st.write(msg["content"])
+                if "code" in msg: st.code(msg["code"], language="python")
 
-        # 3. CHAT INPUT
-        user_input = st.chat_input("Ask (e.g., 'Plot Price vs Reviews')...")
+        user_input = st.chat_input("Command the Pilot (e.g., 'Run a clustering analysis on buyers' or 'Predict sales next month')...")
         
-        # PRO TIP: Tell users about the OG feature
-        if not user_input:
-            st.caption("💡 Tip: Changes apply to 'df'. To compare with raw data, mention 'original data' or 'OG'.")
-
-        if 'quick_prompt' in st.session_state:
-            user_input = st.session_state.pop('quick_prompt')
-
         if user_input:
             st.session_state.chat_history.append({"role": "user", "content": user_input})
-            st.chat_message("user").write(user_input)
+            st.rerun()
+
+        # Processing the latest input
+        if st.session_state.chat_history and st.session_state.chat_history[-1]["role"] == "user":
+            latest_query = st.session_state.chat_history[-1]["content"]
             
             with st.chat_message("assistant"):
-                with st.spinner("Analyzing..."):
-                    try:
-                        buffer = io.StringIO(); df.info(buf=buffer); info_str = buffer.getvalue()
+                with st.spinner("Processing World-Class Analysis..."):
+                    context = f"Columns: {list(df.columns)}\nTypes: {df.dtypes.to_dict()}\nStats: {df.describe().to_dict()}"
+                    
+                    system_prompt = f"""
+                    ROLE: Principal Data Scientist & Scholar.
+                    CAPABILITY: All Python Data Science libraries (Pandas, Scikit-Learn, Statsmodels, Plotly, Seaborn).
+                    
+                    ENVIRONMENT:
+                    - 'df': Active Data (modifiable).
+                    - 'original_df': Raw Data (immutable).
+                    - 'st': Streamlit (for UI).
+                    - 'px', 'go': Plotly (for interactive visuals).
+                    
+                    TASK: {latest_query}
+                    
+                    RULES:
+                    1. Use SCHOLARLY METHODS (Clustering, Regression, ANOVA, Time-Series) where applicable.
+                    2. VISUALS: Always use `st.plotly_chart()` for interactive charts.
+                    3. CLEANING: If asked to clean/edit, assign back to 'df'.
+                    4. Output ONLY valid Python code inside triple backticks.
+                    """
+                    
+                    response = get_advanced_ai_response(system_prompt)
+                    if hasattr(response, 'text'):
+                        code = response.text.split("```python")[1].split("```")[0].strip()
                         
-                        # --- PRO PROMPT (Updated for OG Logic) ---
-                        prompt = f"""
-                        You are an expert Python Data Scientist.
-                        
-                        VARIABLES AVAILABLE:
-                        1. `df` (The Active DataFrame) -> Apply all edits/cleaning here.
-                        2. `original_df` (The Immutable Backup) -> Use ONLY for comparison/viewing. NEVER modify this.
-                        
-                        METADATA:
-                        Columns: {list(df.columns)}
-                        Data Info: {info_str}
-                        
-                        USER QUESTION: {user_input}
-                        
-                        STRICT LOGIC RULES:
-                        1. **ACTION vs VIEW:**
-                           - If the user uses verbs like "REMOVE", "DROP", "FILTER", "CLEAN", "DELETE": You MUST modify 'df'. (e.g. `df = df.drop(...)`).
-                           - If the user asks for "Original", "OG", or "Raw" data: Use `original_df` in your code (e.g. `st.write(original_df.head())`).
-                        
-                        2. **VISUALIZATION:** Use 'plotly.express' as 'px'. You MUST use `st.plotly_chart(fig)`.
-                        
-                        3. **OUTPUT:** Use `st.write()` for text/tables.
-                        
-                        4. **MAPS:** Use `px.scatter_mapbox` with `mapbox_style="open-street-map"` and `zoom=10`.
-                        
-                        5. **FINAL FORMAT:** Return ONLY the raw Python code.
-                        """
-                        
-                        response = get_gemini_response(prompt)
-                        
-                        if hasattr(response, 'text'):
-                            code = response.text.replace("```python", "").replace("```", "").strip()
+                        try:
+                            # SAVE HISTORY BEFORE EXECUTION
+                            st.session_state.history.append(df.copy())
                             
-                            save_data_history()
+                            # EXECUTION SCOPE
+                            scope = {"df": df, "original_df": st.session_state.original_df, "pd": pd, "np": np, 
+                                     "st": st, "px": px, "go": go, "plt": plt, "sns": sns, "alt": alt, "sm": sm}
+                            exec(code, scope)
                             
-                            with st.status("Executed Code", state="complete"):
-                                st.code(code, language='python')
-                            
-                            # EXECUTION SCOPE (Crucial: Give access to original_df)
-                            local_scope = {
-                                "df": df, 
-                                "original_df": st.session_state.original_df,
-                                "pd": pd, "st": st, "px": px, "plt": plt, "sns": sns
-                            }
-                            exec(code, globals(), local_scope)
-                            
-                            st.session_state.df = local_scope['df']
-                            st.session_state.chat_history.append({"role": "assistant", "code": code, "type": "code"})
-                            
+                            # UPDATE STATE
+                            st.session_state.df = scope["df"]
+                            st.session_state.chat_history.append({"role": "assistant", "content": "Analysis Complete.", "code": code})
                             st.rerun()
-                            
-                        else:
-                            st.error(f"AI Error: {response}")
-                            
-                    except Exception as e:
-                        st.error(f"Error: {e}")
+                        except Exception as e:
+                            st.error(f"Logic Sync Error: {e}")
+                    else:
+                        st.error("Intelligence Link Failed.")
+
+    with tab3:
+        st.write("### Technical Audit & Provenance")
+        st.write("This environment is powered by **Data Pilot Ultra**, utilizing Global Data Science standards.")
+        st.json(df.dtypes.astype(str).to_dict())
