@@ -48,17 +48,18 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/2103/2103633.png", width=50)
     st.title("Data Pilot")
     
-    # --- API Key Section ---
-    api_input = st.text_input(
-        "Enter Gemini API Key", 
-        type="password", 
-        placeholder="Paste key here...",
-        value=st.session_state.user_api_key
-    )
-    st.markdown("👉 [**Get your Free API Key here**](https://aistudio.google.com/app/apikey)")
+    # --- COMMENTED OUT BYOK SECTION (As requested) ---
+    # api_input = st.text_input(
+    #     "Enter Gemini API Key", 
+    #     type="password", 
+    #     placeholder="Paste key here...",
+    #     value=st.session_state.user_api_key
+    # )
+    # st.markdown("👉 [**Get your Free API Key here**](https://aistudio.google.com/app/apikey)")
     
-    if api_input:
-        st.session_state.user_api_key = api_input
+    # if api_input:
+    #     st.session_state.user_api_key = api_input
+    # ------------------------------------------------
     
     st.markdown("---")
     
@@ -139,16 +140,18 @@ def save_data_history():
         if len(st.session_state.history) > 5:
             st.session_state.history.pop(0)
 
-# --- 6. MAIN APP ---
+# --- 6. MAIN APP (Updated for Secrets) ---
 st.markdown('<p class="title-text">Data Pilot</p>', unsafe_allow_html=True)
 
-if not st.session_state.user_api_key:
-    st.warning("👈 Please enter your Google Gemini API Key in the sidebar to start.")
+# MODIFIED: Check st.secrets instead of user_api_key
+if "GEMINI_API_KEY" not in st.secrets:
+    st.warning("👈 Developer Configuration Required: Please add 'GEMINI_API_KEY' to Streamlit Secrets.")
 elif st.session_state.df is None:
     st.info("👈 Upload a CSV file in the sidebar to begin.")
 else:
     try:
-        genai.configure(api_key=st.session_state.user_api_key)
+        # Use the secret key
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
     except Exception as e:
         st.error(f"API Key Error: {e}")
 
@@ -283,4 +286,3 @@ else:
                             
                     except Exception as e:
                         st.error(f"Error: {e}")
-
