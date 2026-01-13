@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from google import genai  # UPDATED TO 2026 STABLE LIBRARY
+from google import genai # 2026 Stable Library
 import io
+import traceback
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
@@ -29,15 +30,15 @@ st.markdown("""
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     }
     .stChatMessage { border-radius: 15px; border: 1px solid #e0e0e0; margin-bottom: 15px; }
+    .error-log { background-color: #ffeeee; border: 1px solid #ff0000; padding: 10px; border-radius: 5px; font-family: monospace; font-size: 0.8rem; }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 4. SIDEBAR ---
 with st.sidebar:
     st.markdown("## 👨🏼‍✈️ Data Pilot Ultra")
-    st.caption("Version 3.0 | 2026 Analytics Core")
+    st.caption("Version 4.0 | 2026 Intelligence Core")
     
-    # API KEY LOGIC
     api_key = st.secrets.get("GEMINI_API_KEY")
     if not api_key:
         api_key = st.text_input("Enter Gemini API Key", type="password")
@@ -62,12 +63,12 @@ with st.sidebar:
         
         col_undo, col_reset = st.columns(2)
         with col_undo:
-            if st.button("↺ Undo", width="stretch"): # UPDATED SYNTAX
+            if st.button("↺ Undo", width="stretch"):
                 if st.session_state.history:
                     st.session_state.df = st.session_state.history.pop()
                     st.rerun()
         with col_reset:
-            if st.button("🔄 Reset", width="stretch"): # UPDATED SYNTAX
+            if st.button("🔄 Reset", width="stretch"):
                 st.session_state.df = st.session_state.original_df.copy()
                 st.session_state.history = []
                 st.rerun()
@@ -78,14 +79,14 @@ with st.sidebar:
 # --- 5. AI EXECUTION LOGIC ---
 def get_advanced_ai_response(prompt, key):
     try:
-        client = genai.Client(api_key=key) # NEW 2026 CLIENT LOGIC
+        client = genai.Client(api_key=key)
         response = client.models.generate_content(
-            model='gemini-2.0-flash', # UPDATED TO LATEST MODEL
+            model='gemini-2.0-flash', 
             contents=prompt
         )
-        return response
+        return response, None
     except Exception as e:
-        return f"Intelligence Link Error: {str(e)}"
+        return None, str(e)
 
 # --- 6. MAIN INTERFACE ---
 st.markdown('<p class="title-text">Data Pilot Ultra</p>', unsafe_allow_html=True)
@@ -93,7 +94,7 @@ st.markdown('<p class="title-text">Data Pilot Ultra</p>', unsafe_allow_html=True
 if not api_key:
     st.warning("👈 Provide a Gemini API Key to activate.")
 elif st.session_state.df is None:
-    st.info("👋 Upload a dataset to begin the deep-dive.")
+    st.info("👋 Upload a dataset to begin.")
 else:
     df = st.session_state.df
     tab1, tab2 = st.tabs(["📊 Dashboard", "🧠 Analyst Notebook"])
@@ -108,7 +109,7 @@ else:
         st.dataframe(df.head(10), width="stretch")
 
     with tab2:
-        # QUICK ACTIONS TOOLKIT
+        # ANALYST TOOLKIT
         with st.expander("🛠️ Analyst Toolkit", expanded=False):
             t1, t2, t3, t4 = st.columns(4)
             if t1.button("👁️ Preview", width="stretch"):
@@ -118,19 +119,20 @@ else:
                 st.session_state.chat_history.append({"role": "user", "content": "Analyze missing values"})
                 st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.isnull().sum())"})
             if t3.button("🧹 Clean", width="stretch"):
-                st.session_state.quick_prompt = "Perform scholarly cleaning: fix types and handle missing values. Assign to 'df'."
+                st.session_state.quick_prompt = "Clean data: fix types and handle missing values. Assign to 'df'."
             if t4.button("📊 Stats", width="stretch"):
                 st.session_state.chat_history.append({"role": "user", "content": "Show descriptive statistics"})
                 st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.describe())"})
 
+        # CHAT DISPLAY
         for msg in st.session_state.chat_history:
             with st.chat_message(msg["role"]):
                 if "content" in msg: st.write(msg["content"])
                 if "code" in msg:
-                    with st.status("Executed", state="complete"):
+                    with st.status("Executed Code", state="complete"):
                         st.code(msg["code"], language="python")
                     try:
-                        scope = {"df": df, "original_df": st.session_state.original_df, "pd": pd, "np": np, "st": st, "px": px, "plt": plt, "sns": sns, "go": go, "sm": sm}
+                        scope = {"df": df, "original_df": st.session_state.original_df, "pd": pd, "np": np, "st": st, "px": px, "plt": plt, "sns": sns, "go": go, "sm": sm, "alt": alt}
                         exec(msg["code"], scope)
                     except: pass
 
@@ -146,25 +148,30 @@ else:
                 with st.spinner("Analyzing..."):
                     prompt = f"""
                     ROLE: Principal Data Scientist.
-                    ENVIRONMENT: 'df' (active), 'original_df' (raw), 'st', 'px'.
+                    ENVIRONMENT: 'df' (active), 'original_df' (raw), 'st', 'px', 'go', 'sm', 'alt', 'sns'.
                     METADATA: {list(df.columns)}
                     TASK: {user_input}
-                    RULES: Return ONLY raw Python code inside triple backticks. Use `st.plotly_chart()` for visuals. 
-                    Update 'df' if cleaning.
+                    RULES: Return ONLY raw Python code inside triple backticks. Use st.plotly_chart() for visuals. Update 'df' for edits.
                     """
-                    response = get_advanced_ai_response(prompt, api_key)
+                    response, error = get_advanced_ai_response(prompt, api_key)
                     
-                    if hasattr(response, 'text'):
-                        # Fixed string cleaning logic
-                        code = response.text.split("```python")[-1].split("```")[0].strip()
-                        st.session_state.history.append(df.copy())
+                    if error:
+                        st.error("Intelligence Link Failed.")
+                        with st.expander("🛠️ Error Logger (System Details)"):
+                            st.markdown(f'<div class="error-log">{error}</div>', unsafe_allow_html=True)
+                    elif hasattr(response, 'text'):
                         try:
-                            scope = {"df": df, "original_df": st.session_state.original_df, "pd": pd, "np": np, "st": st, "px": px, "plt": plt, "sns": sns, "go": go, "sm": sm}
+                            code = response.text.split("```python")[-1].split("```")[0].strip()
+                            st.session_state.history.append(df.copy())
+                            
+                            scope = {"df": df, "original_df": st.session_state.original_df, "pd": pd, "np": np, "st": st, "px": px, "plt": plt, "sns": sns, "go": go, "sm": sm, "alt": alt}
                             exec(code, scope)
+                            
                             st.session_state.df = scope["df"]
                             st.session_state.chat_history.append({"role": "assistant", "code": code})
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Execution Error: {e}")
-                    else:
-                        st.error("Intelligence Link Failed. Check API Key.")
+                            st.error("Python Execution Error.")
+                            with st.expander("🛠️ Error Logger (Code Details)"):
+                                st.code(code, language="python")
+                                st.markdown(f'<div class="error-log">{traceback.format_exc()}</div>', unsafe_allow_html=True)
