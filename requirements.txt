@@ -1,7 +1,7 @@
 streamlit>=1.52.0
 pandas
 numpy
-google-genai==0.8.6
+google-genai==1.57.0
 matplotlib
 seaborn
 plotly
