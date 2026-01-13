@@ -14,13 +14,13 @@ import altair as alt
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="Data Pilot Ultra", page_icon="🚀", layout="wide")
 
-# --- 2. SESSION STATE (The Brain's Memory) ---
+# --- 2. SESSION STATE ---
 if 'df' not in st.session_state: st.session_state.df = None
 if 'original_df' not in st.session_state: st.session_state.original_df = None
 if 'history' not in st.session_state: st.session_state.history = [] 
 if 'chat_history' not in st.session_state: st.session_state.chat_history = [] 
 
-# --- 3. CUSTOM CSS (The Professional Look) ---
+# --- 3. CUSTOM CSS ---
 st.markdown("""
     <style>
     .title-text {
@@ -34,13 +34,17 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. SIDEBAR (The Control Room) ---
+# --- 4. SIDEBAR (Restored Features) ---
 with st.sidebar:
     st.markdown("## 👨🏼‍✈️ Data Pilot Ultra")
     st.caption("Version 2.0 | Advanced Analytics Engine")
     
-    # COMMENTED OUT BYOK (Using Secrets as requested)
-    # api_input = st.text_input("Enter API Key", type="password")
+    # API KEY FAILSAFE: If Secrets missing, show input box
+    api_key = st.secrets.get("GEMINI_API_KEY")
+    if not api_key:
+        api_key = st.text_input("Enter Gemini API Key (Secrets not found)", type="password")
+        if api_key:
+            st.info("Using manually entered key.")
     
     st.divider()
     uploaded_file = st.file_uploader("📂 Feed the Agent Data", type=["csv", "xlsx"])
@@ -58,21 +62,28 @@ with st.sidebar:
 
     if st.session_state.df is not None:
         st.divider()
-        st.markdown("### 🛠️ Global Commands")
-        if st.button("🔄 Reset Environment"):
-            st.session_state.df = st.session_state.original_df.copy()
-            st.session_state.history = []
-            st.session_state.chat_history.append({"role": "system", "content": "Environment Reset to Original."})
-            st.rerun()
+        st.markdown("**💾 Export & Control**")
+        
+        # RESTORED UNDO BUTTON
+        col_undo, col_reset = st.columns(2)
+        with col_undo:
+            if st.button("↺ Undo", use_container_width=True):
+                if st.session_state.history:
+                    st.session_state.df = st.session_state.history.pop()
+                    st.rerun()
+        with col_reset:
+            if st.button("🔄 Reset", use_container_width=True):
+                st.session_state.df = st.session_state.original_df.copy()
+                st.session_state.history = []
+                st.rerun()
         
         csv = st.session_state.df.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Export Current Intelligence", data=csv, file_name="datapilot_export.csv", use_container_width=True)
+        st.download_button("📥 Export CSV", data=csv, file_name="datapilot_export.csv", use_container_width=True)
 
 # --- 5. AI EXECUTION LOGIC ---
-def get_advanced_ai_response(prompt):
+def get_advanced_ai_response(prompt, key):
     try:
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        # Use Gemini 1.5 Pro for 'World Class' reasoning
+        genai.configure(api_key=key)
         model = genai.GenerativeModel('gemini-1.5-pro')
         return model.generate_content(prompt)
     except Exception as e:
@@ -81,85 +92,86 @@ def get_advanced_ai_response(prompt):
 # --- 6. MAIN INTERFACE ---
 st.markdown('<p class="title-text">Data Pilot Ultra</p>', unsafe_allow_html=True)
 
-if "GEMINI_API_KEY" not in st.secrets:
-    st.warning("⚠️ Configuration Required: Please add GEMINI_API_KEY to Streamlit Secrets.")
+if not api_key:
+    st.warning("👈 Please provide a Gemini API Key to activate the Pilot.")
 elif st.session_state.df is None:
-    st.info("👋 I am your Advanced AI Analyst. Upload a dataset to begin the deep-dive.")
+    st.info("👋 Upload a dataset in the sidebar to begin the deep-dive.")
 else:
     df = st.session_state.df
     tab1, tab2, tab3 = st.tabs(["📊 Global Dashboard", "🧠 AI Analyst Notebook", "📜 Knowledge Audit"])
 
     with tab1:
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Data Points", df.size)
+        c1.metric("Rows", df.shape[0])
         c2.metric("Features", df.shape[1])
         c3.metric("Completeness", f"{(1 - df.isnull().mean().mean())*100:.1f}%")
         c4.metric("Skewness", f"{df.skew(numeric_only=True).mean():.2f}")
         st.write("### Active Intelligence Layer")
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df.head(10), use_container_width=True)
 
     with tab2:
+        # RESTORED ANALYST TOOLKIT (Quick Actions)
+        with st.expander("🛠️ Analyst Toolkit (Quick Actions)", expanded=False):
+            t1, t2, t3, t4 = st.columns(4)
+            if t1.button("👁️ Preview Data"):
+                st.session_state.chat_history.append({"role": "user", "content": "Show data preview"})
+                st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.head())"})
+            if t2.button("📉 Missing Map"):
+                st.session_state.chat_history.append({"role": "user", "content": "Analyze missing values"})
+                st.session_state.chat_history.append({"role": "assistant", "code": "st.write(df.isnull().sum())"})
+            if t3.button("🧹 Auto-Clean"):
+                st.session_state.quick_prompt = "Perform scholarly data cleaning: handle missing values, remove duplicates, and fix data types. Assign to 'df'."
+            if t4.button("📊 Correlation"):
+                st.session_state.chat_history.append({"role": "user", "content": "Show correlation heatmap"})
+                st.session_state.chat_history.append({"role": "assistant", "code": "fig = px.imshow(df.corr(numeric_only=True)); st.plotly_chart(fig)"})
+
         for msg in st.session_state.chat_history:
             with st.chat_message(msg["role"]):
                 if "content" in msg: st.write(msg["content"])
-                if "code" in msg: st.code(msg["code"], language="python")
+                if "code" in msg:
+                    with st.status("Analysis Executed", state="complete"):
+                        st.code(msg["code"], language="python")
+                    # Immediate re-execution for UI consistency
+                    try:
+                        scope = {"df": df, "original_df": st.session_state.original_df, "pd": pd, "np": np, "st": st, "px": px, "plt": plt, "sns": sns}
+                        exec(msg["code"], scope)
+                    except: pass
 
-        user_input = st.chat_input("Command the Pilot (e.g., 'Run a clustering analysis on buyers' or 'Predict sales next month')...")
-        
+        user_input = st.chat_input("Command the Pilot...")
+        if 'quick_prompt' in st.session_state:
+            user_input = st.session_state.pop('quick_prompt')
+
         if user_input:
             st.session_state.chat_history.append({"role": "user", "content": user_input})
-            st.rerun()
-
-        # Processing the latest input
-        if st.session_state.chat_history and st.session_state.chat_history[-1]["role"] == "user":
-            latest_query = st.session_state.chat_history[-1]["content"]
+            st.chat_message("user").write(user_input)
             
             with st.chat_message("assistant"):
-                with st.spinner("Processing World-Class Analysis..."):
-                    context = f"Columns: {list(df.columns)}\nTypes: {df.dtypes.to_dict()}\nStats: {df.describe().to_dict()}"
-                    
-                    system_prompt = f"""
-                    ROLE: Principal Data Scientist & Scholar.
-                    CAPABILITY: All Python Data Science libraries (Pandas, Scikit-Learn, Statsmodels, Plotly, Seaborn).
-                    
-                    ENVIRONMENT:
-                    - 'df': Active Data (modifiable).
-                    - 'original_df': Raw Data (immutable).
-                    - 'st': Streamlit (for UI).
-                    - 'px', 'go': Plotly (for interactive visuals).
-                    
-                    TASK: {latest_query}
-                    
-                    RULES:
-                    1. Use SCHOLARLY METHODS (Clustering, Regression, ANOVA, Time-Series) where applicable.
-                    2. VISUALS: Always use `st.plotly_chart()` for interactive charts.
-                    3. CLEANING: If asked to clean/edit, assign back to 'df'.
-                    4. Output ONLY valid Python code inside triple backticks.
+                with st.spinner("Executing Scholar-Level Analysis..."):
+                    context = f"Columns: {list(df.columns)}\nTypes: {df.dtypes.to_dict()}"
+                    prompt = f"""
+                    ROLE: Principal Data Scientist.
+                    ENVIRONMENT: 'df' (active), 'original_df' (raw), 'px' (Plotly Express).
+                    METADATA: {context}
+                    TASK: {user_input}
+                    RULES: Return ONLY raw Python code. Use `st.plotly_chart()` for graphs. Update 'df' if requested to clean/change.
                     """
+                    response = get_advanced_ai_response(prompt, api_key)
                     
-                    response = get_advanced_ai_response(system_prompt)
                     if hasattr(response, 'text'):
-                        code = response.text.split("```python")[1].split("```")[0].strip()
+                        code = response.text.replace("```python", "").replace("```", "").strip()
+                        st.session_state.history.append(df.copy())
                         
                         try:
-                            # SAVE HISTORY BEFORE EXECUTION
-                            st.session_state.history.append(df.copy())
-                            
-                            # EXECUTION SCOPE
-                            scope = {"df": df, "original_df": st.session_state.original_df, "pd": pd, "np": np, 
-                                     "st": st, "px": px, "go": go, "plt": plt, "sns": sns, "alt": alt, "sm": sm}
+                            scope = {"df": df, "original_df": st.session_state.original_df, "pd": pd, "np": np, "st": st, "px": px, "plt": plt, "sns": sns, "go": go, "sm": sm}
                             exec(code, scope)
-                            
-                            # UPDATE STATE
                             st.session_state.df = scope["df"]
-                            st.session_state.chat_history.append({"role": "assistant", "content": "Analysis Complete.", "code": code})
+                            st.session_state.chat_history.append({"role": "assistant", "code": code})
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Logic Sync Error: {e}")
+                            st.error(f"Execution Error: {e}")
                     else:
-                        st.error("Intelligence Link Failed.")
+                        st.error("Intelligence Link Failed. Check API Key.")
 
     with tab3:
-        st.write("### Technical Audit & Provenance")
-        st.write("This environment is powered by **Data Pilot Ultra**, utilizing Global Data Science standards.")
+        st.write("### Technical Knowledge Audit")
         st.json(df.dtypes.astype(str).to_dict())
